@@ -1,5 +1,8 @@
 // ignore_for_file: unused_element, unused_field, avoid_print
+import 'dart:io';
+import 'package:chat_app/widgets/user_image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 
 final _firebase = FirebaseAuth.instance;
@@ -13,18 +16,23 @@ class AuthScreen extends StatefulWidget {
 
 class _AuthScreenState extends State<AuthScreen> {
   var _isLogin = true;
+  var _isAuthenticating = false;
   var _enteredEmail = '';
   var _enteredPassword = '';
+  File? _selectedImage;
   final _form = GlobalKey<FormState>();
 
   void _sumbit() async {
     final isValid = _form.currentState!.validate();
-    if (!isValid) {
+    if (!isValid || !_isLogin && _selectedImage == null) {
       return;
     }
     _form.currentState!.save();
 
     try {
+      setState(() {
+        _isAuthenticating = true;
+      });
       if (_isLogin) {
         final userCredentials = await _firebase.signInWithEmailAndPassword(
           email: _enteredEmail,
@@ -36,7 +44,15 @@ class _AuthScreenState extends State<AuthScreen> {
           email: _enteredEmail,
           password: _enteredPassword,
         );
+        final storageRef = FirebaseStorage.instance
+            .ref()
+            .child('user_images')
+            .child('${userCredentials.user!.uid}.jpg');
         print(userCredentials);
+
+        await storageRef.putFile(_selectedImage!);
+        final imageUrl = await storageRef.getDownloadURL();
+        print(imageUrl);
       }
     } on FirebaseAuthException catch (error) {
       if (error.code == '') {}
@@ -46,6 +62,9 @@ class _AuthScreenState extends State<AuthScreen> {
           content: Text(error.message ?? 'Auhentication failed'),
         ),
       );
+      setState(() {
+        _isAuthenticating = false;
+      });
     }
   }
 
@@ -79,6 +98,12 @@ class _AuthScreenState extends State<AuthScreen> {
                       key: _form,
                       child: Column(
                         children: [
+                          if (!_isLogin)
+                            UserImagePicker(
+                              onPickImage: (pickedImage) {
+                                _selectedImage = pickedImage;
+                              },
+                            ),
                           TextFormField(
                               decoration: const InputDecoration(
                                 labelText: 'Email',
@@ -113,18 +138,20 @@ class _AuthScreenState extends State<AuthScreen> {
                             },
                           ),
                           const SizedBox(height: 12),
-                          ElevatedButton(
-                            onPressed: _sumbit,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blue,
-                            ),
-                            child: Text(
-                              _isLogin ? 'Login' : 'Signup',
-                              style: TextStyle(
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
+                          _isAuthenticating
+                              ? const CircularProgressIndicator()
+                              : ElevatedButton(
+                                  onPressed: _sumbit,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.blue,
+                                  ),
+                                  child: Text(
+                                    _isLogin ? 'Login' : 'Signup',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
                           TextButton(
                             onPressed: () {
                               setState(() {
